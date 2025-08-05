@@ -18,6 +18,15 @@ interface EmbeddedFile {
   async function parseCompoundFile(content: string): Promise<EmbeddedFile[]> {
     const files: EmbeddedFile[] = [];
     
+    // Input validation
+    if (!content || typeof content !== 'string') {
+      throw new Error('Invalid input: content must be a non-empty string');
+    }
+    
+    if (!content.includes('**%%DOCU')) {
+      throw new Error('Invalid file format: missing **%%DOCU markers. This does not appear to be a valid compound file.');
+    }
+    
     // 1. Split on **%%DOCU markers
     const sections = content.split('**%%DOCU');
     
@@ -26,6 +35,11 @@ interface EmbeddedFile {
       
       // 2. Extract metadata (everything before _SIG/D.C.)
       const sigIndex = section.indexOf('_SIG/D.C.');
+      if (sigIndex === -1) {
+        console.warn(`Warning: Section ${i} missing _SIG/D.C. marker, skipping...`);
+        continue; // Skip this section if marker not found
+      }
+      
       const metadataBlock = section.substring(0, sigIndex);
       
       // 3. Parse metadata fields
@@ -276,10 +290,31 @@ interface EmbeddedFile {
   async function main() {
     try {
       const fs = await import('fs/promises');
+      
+      // Check if sample.env exists
+      try {
+        await fs.access('sample.env');
+      } catch (error) {
+        console.error('❌ Error: sample.env file not found in current directory');
+        console.log('💡 Make sure you have a sample.env file to parse');
+        process.exit(1);
+      }
+      
+      console.log('📂 Reading sample.env file...');
       const fileContent = await fs.readFile('sample.env', 'utf-8');
+      
+      if (!fileContent) {
+        console.error('❌ Error: sample.env file is empty');
+        process.exit(1);
+      }
       
       console.log('🔍 Parsing compound file...');
       const embeddedFiles = await parseCompoundFile(fileContent);
+      
+      if (embeddedFiles.length === 0) {
+        console.warn('⚠️  No embedded files found in the compound file');
+        return;
+      }
       
       console.log(`\n📊 Found ${embeddedFiles.length} embedded files:\n`);
       
