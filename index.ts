@@ -20,43 +20,60 @@ interface EmbeddedFile {
   
 
   
-  function parseMetadata(block: string): Record<string, string> {
+  /**
+   * Extracts metadata from a metadata block with comprehensive validation
+   * 
+   * Parses key/value pairs in the format "KEY/value" and handles edge cases:
+   * - Empty or whitespace-only lines
+   * - Lines without the '/' delimiter
+   * - Empty keys or values
+   * - Multiple '/' characters in values
+   * 
+   * @param block - Raw metadata block string
+   * @returns Record of metadata key-value pairs
+   */
+  function extractMetadata(block: string): Record<string, string> {
     const metadata: Record<string, string> = {};
+    
+    if (!block || typeof block !== 'string') {
+      console.warn('Warning: Invalid metadata block provided');
+      return metadata;
+    }
+    
     const lines = block.split('\n');
     
     for (const line of lines) {
-      if (line.includes('/')) {
-        const [key, ...valueParts] = line.split('/');
-        metadata[key.trim()] = valueParts.join('/').trim();
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines
+      if (!trimmedLine) {
+        continue;
       }
+      
+      // Check if line contains the expected delimiter
+      if (!trimmedLine.includes('/')) {
+        console.warn(`Warning: Malformed metadata line (missing '/' delimiter): "${trimmedLine}"`);
+        continue;
+      }
+      
+      const delimiterIndex = trimmedLine.indexOf('/');
+      const key = trimmedLine.substring(0, delimiterIndex).trim();
+      const value = trimmedLine.substring(delimiterIndex + 1).trim();
+      
+      // Validate key is not empty
+      if (!key) {
+        console.warn(`Warning: Empty metadata key found in line: "${trimmedLine}"`);
+        continue;
+      }
+      
+      // Store metadata (value can be empty)
+      metadata[key] = value;
     }
     
     return metadata;
   }
 
-  function calculateLineNumber(fullContent: string, section: string): number {
-    // Find where this section starts in the full content
-    const sectionIndex = fullContent.indexOf(section);
-    
-    if (sectionIndex === -1) {
-      return 1; // Default to line 1 if section not found
-    }
-    
-    // Count newlines from start of file up to this section
-    const beforeSection = fullContent.substring(0, sectionIndex);
-    const lineCount = (beforeSection.match(/\n/g) || []).length;
-    
-    // Return 1-based line number
-    return lineCount + 1;
-  }
 
-  function countLines(text: string): number {
-    // Count newlines in the text
-    const lineCount = (text.match(/\n/g) || []).length;
-    
-    // If text doesn't end with newline, add 1 for the last line
-    return text.length > 0 && !text.endsWith('\n') ? lineCount + 1 : lineCount;
-  }
 
   async function extractFilesToDisk(files: EmbeddedFile[], outputDir: string = 'output'): Promise<void> {
     const fs = await import('fs/promises');
@@ -122,10 +139,10 @@ interface EmbeddedFile {
             processedContent = file.content;
           } else if (file.extension === '.txt' || file.type.includes('PLAINTEXT')) {
             // For text files, extract clean text content  
-            processedContent = await processTextContent(file.content);
+            processedContent = await extractCleanTextContent(file.content);
           } else if (file.type.includes('XML') || file.doctype.includes('FORM')) {
             // For XML files, extract clean XML content
-            processedContent = await processXMLContent(file.content);
+            processedContent = await extractCleanXMLContent(file.content);
           } else {
             // For other files, use raw content
             processedContent = file.content;
@@ -160,7 +177,7 @@ interface EmbeddedFile {
     }
   }
 
-  async function processXMLContent(content: Buffer): Promise<string> {
+  async function extractCleanXMLContent(content: Buffer): Promise<string> {
     const contentStr = content.toString('utf-8');
     
     // Look for XML declaration or root element
@@ -187,7 +204,7 @@ interface EmbeddedFile {
 
 
 
-  async function processTextContent(content: Buffer): Promise<string> {
+  async function extractCleanTextContent(content: Buffer): Promise<string> {
     // GENERALIZED: Find the start of clean text by looking for printable ASCII sequences
     let cleanTextStart = -1;
     
@@ -326,7 +343,7 @@ interface EmbeddedFile {
       objectMode: true,
       async transform(section: { sectionNumber: number, content: string }, encoding, callback) {
         try {
-          const parsedFile = await processSectionToFile(section.content, section.sectionNumber);
+          const parsedFile = await convertSectionToEmbeddedFile(section.content, section.sectionNumber);
           if (parsedFile) {
             this.push(parsedFile);
           }
@@ -372,7 +389,7 @@ interface EmbeddedFile {
    * Process a single section content into an EmbeddedFile object
    * Used by both streaming and memory-based parsing approaches
    */
-  async function processSectionToFile(sectionContent: string, sectionNumber: number): Promise<EmbeddedFile | null> {
+  async function convertSectionToEmbeddedFile(sectionContent: string, sectionNumber: number): Promise<EmbeddedFile | null> {
     const SIGNATURE_MARKER = '_SIG/D.C.';
     
     // Find the signature marker that separates metadata from content
@@ -384,7 +401,7 @@ interface EmbeddedFile {
     
     // Extract metadata block (everything before the signature marker)
     const metadataBlock = sectionContent.substring(0, sigIndex);
-    const metadata = parseMetadata(metadataBlock);
+    const metadata = extractMetadata(metadataBlock);
     
     // Extract raw file content (everything after signature marker)
     const contentStart = sigIndex + SIGNATURE_MARKER.length;
