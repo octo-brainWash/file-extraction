@@ -233,3 +233,11 @@ npx ts-node index.ts
 - Suitable for production environments with memory constraints
 
 For additional support, please check the error messages which provide specific guidance for resolution.
+
+### Future Improvements
+For time sake, this project has been built focused in the main problem and with the simplest structure possible.
+In an actual production environment, this project would be built with the following improvements:
+- This function would probably be part of an API or Grpc service, making it accesible through a REST or gRPC interface and being accesible from a client or frontend.
+- The project would be built with a more robust testing suite, including unit tests, integration tests, and performance tests.
+- The project would be tested in a more robust way, making sure its generalization capabilities are verified.
+- Writing the entire code in a single file would be avoided, I also prefer using a more OOP approach, and the code would be more modular and easier to maintain. Using patterns like Strategy to split different file types into different classes might be a good approach.
