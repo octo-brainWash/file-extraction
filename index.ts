@@ -45,12 +45,10 @@ interface EmbeddedFile {
     for (const line of lines) {
       const trimmedLine = line.trim();
       
-      // Skip empty lines
       if (!trimmedLine) {
         continue;
       }
       
-      // Check if line contains the expected delimiter
       if (!trimmedLine.includes('/')) {
         console.warn(`Warning: Malformed metadata line (missing '/' delimiter): "${trimmedLine}"`);
         continue;
@@ -60,13 +58,11 @@ interface EmbeddedFile {
       const key = trimmedLine.substring(0, delimiterIndex).trim();
       const value = trimmedLine.substring(delimiterIndex + 1).trim();
       
-      // Validate key is not empty
       if (!key) {
         console.warn(`Warning: Empty metadata key found in line: "${trimmedLine}"`);
         continue;
       }
       
-      // Store metadata (value can be empty)
       metadata[key] = value;
     }
     
@@ -79,27 +75,21 @@ interface EmbeddedFile {
     const fs = await import('fs/promises');
     const path = await import('path');
     
-    // === OUTPUT DIRECTORY VALIDATION ===
-    // Validate output directory path
     if (!outputDir || typeof outputDir !== 'string') {
       throw new Error('Invalid output directory: must be a non-empty string');
     }
     
-    // Resolve to absolute path for better error handling
     const absoluteOutputDir = path.resolve(outputDir);
     
     try {
-      // Check if directory exists and is accessible
       try {
         const stats = await fs.stat(absoluteOutputDir);
         if (!stats.isDirectory()) {
           throw new Error(`Output path '${outputDir}' exists but is not a directory`);
         }
-        // Test write permissions by attempting to access the directory
         await fs.access(absoluteOutputDir, fs.constants.W_OK);
       } catch (error: any) {
         if (error.code === 'ENOENT') {
-          // Directory doesn't exist, try to create it
           try {
             await fs.mkdir(absoluteOutputDir, { recursive: true });
             console.log(`📁 Created output directory: ${outputDir}`);
@@ -115,17 +105,14 @@ interface EmbeddedFile {
         }
       }
       
-      // === FILE EXTRACTION ===
       for (const file of files) {
         try {
-          // Sanitize filename to prevent directory traversal attacks
           const sanitizedFilename = file.filename 
             ? file.filename.replace(/[<>:"/\\|?*]/g, '_').replace(/\.\./g, '_') 
             : `unknown_${file.guid.slice(0, 8)}${file.extension}`;
           
           const outputPath = path.join(absoluteOutputDir, sanitizedFilename);
           
-          // Ensure the output path is within the target directory (security check)
           if (!outputPath.startsWith(absoluteOutputDir)) {
             console.warn(`⚠️ Skipping file with suspicious path: ${file.filename}`);
             continue;
@@ -133,22 +120,16 @@ interface EmbeddedFile {
           
           let processedContent: string | Buffer;
           
-          // Process content based on file type
           if (file.type.includes('IMAGE') || file.doctype.includes('IMAGE')) {
-            // For image files, use the content as-is from parsing stage
             processedContent = file.content;
           } else if (file.extension === '.txt' || file.type.includes('PLAINTEXT')) {
-            // For text files, extract clean text content  
             processedContent = await extractCleanTextContent(file.content);
           } else if (file.type.includes('XML') || file.doctype.includes('FORM')) {
-            // For XML files, extract clean XML content
             processedContent = await extractCleanXMLContent(file.content);
           } else {
-            // For other files, use raw content
             processedContent = file.content;
           }
           
-          // Write file to disk with error handling
           try {
             if (typeof processedContent === 'string') {
               await fs.writeFile(outputPath, processedContent, 'utf-8');
@@ -160,12 +141,10 @@ interface EmbeddedFile {
             console.log(`✅ Extracted: ${fileType} ${sanitizedFilename} (${processedContent.length} bytes)`);
           } catch (writeError: any) {
             console.error(`❌ Failed to write file ${sanitizedFilename}: ${writeError.message}`);
-            // Continue with other files instead of failing completely
           }
           
         } catch (fileError: any) {
           console.error(`❌ Error processing file ${file.filename || 'unknown'}: ${fileError.message}`);
-          // Continue with other files
         }
       }
       
@@ -180,7 +159,6 @@ interface EmbeddedFile {
   async function extractCleanXMLContent(content: Buffer): Promise<string> {
     const contentStr = content.toString('utf-8');
     
-    // Look for XML declaration or root element
     let xmlStart = contentStr.indexOf('<?xml');
     if (xmlStart === -1) {
       xmlStart = contentStr.indexOf('<FORMINFO');
@@ -192,27 +170,22 @@ interface EmbeddedFile {
     if (xmlStart !== -1) {
       let xmlContent = contentStr.slice(xmlStart);
       
-      // Remove any trailing markers
       xmlContent = xmlContent.replace(/\*\*%%.*$/, '').replace(/\*\*$/, '').trim();
       
       return xmlContent;
     }
     
-    // If no XML found, return the content as-is
     return contentStr.trim();
   }
 
 
 
   async function extractCleanTextContent(content: Buffer): Promise<string> {
-    // GENERALIZED: Find the start of clean text by looking for printable ASCII sequences
     let cleanTextStart = -1;
     
-    // Strategy 1: Look for sequences of printable ASCII characters (letters, spaces, punctuation)
     for (let i = 0; i < content.length - 10; i++) {
       let consecutivePrintable = 0;
       
-      // Check if we have a sequence of printable characters
       for (let j = i; j < Math.min(i + 20, content.length); j++) {
         const byte = content[j];
         if ((byte >= 0x20 && byte <= 0x7E) || byte === 0x09 || byte === 0x0A || byte === 0x0D) {
@@ -222,7 +195,6 @@ interface EmbeddedFile {
         }
       }
       
-      // If we found 10+ consecutive printable chars, this is likely the text start
       if (consecutivePrintable >= 10) {
         cleanTextStart = i;
         break;
@@ -233,13 +205,11 @@ interface EmbeddedFile {
       const textBuffer = content.slice(cleanTextStart);
       let textContent = textBuffer.toString('utf-8');
       
-      // Remove trailing markers  
       textContent = textContent.replace(/\*\*$/s, '').trim();
       
       return textContent;
     }
     
-    // Strategy 2: Look for _SIG/D.C. marker and extract after it
     const sigBytes = Buffer.from('_SIG/D.C.');
     const sigIndex = content.indexOf(sigBytes);
     
@@ -247,20 +217,16 @@ interface EmbeddedFile {
       const afterSig = content.slice(sigIndex + sigBytes.length);
       let textContent = afterSig.toString('utf-8');
       
-      // Remove non-printable characters at the start
       textContent = textContent.replace(/^[^\x20-\x7E\u00A0-\uFFFF]*/, '');
       textContent = textContent.replace(/\*\*%%.*$/s, '').replace(/\*\*$/s, '').trim();
       
       return textContent;
     }
     
-    // Strategy 3: Fallback - clean up the entire content
     let textContent = content.toString('utf-8');
     
-    // Remove non-printable characters at the start
     textContent = textContent.replace(/^[^\x20-\x7E\u00A0-\uFFFF]*/, '');
     
-    // Remove trailing markers
     textContent = textContent.replace(/\*\*%%.*$/s, '').replace(/\*\*$/s, '').trim();
     
     return textContent;
@@ -295,32 +261,26 @@ interface EmbeddedFile {
     let currentSection = '';
     let inSection = false;
     
-    // Transform stream to process file chunks and extract sections
     const sectionExtractor = new Transform({
       objectMode: true,
       transform(chunk: Buffer, encoding, callback) {
         buffer += chunk.toString('utf-8');
         
-        // Look for complete sections
         let delimiterIndex;
         while ((delimiterIndex = buffer.indexOf(SECTION_DELIMITER)) !== -1) {
           
           if (inSection) {
-            // End of current section found
             currentSection += buffer.substring(0, delimiterIndex);
             this.push({ sectionNumber: sectionCount, content: currentSection });
             sectionCount++;
             currentSection = '';
           } else {
-            // First section delimiter (file header)
             inSection = true;
           }
           
-          // Remove processed part from buffer
           buffer = buffer.substring(delimiterIndex + SECTION_DELIMITER.length);
         }
         
-        // Add remaining buffer to current section if we're inside one
         if (inSection) {
           currentSection += buffer;
           buffer = '';
@@ -330,7 +290,6 @@ interface EmbeddedFile {
       },
       
       flush(callback) {
-        // Handle the last section if file doesn't end with delimiter
         if (inSection && currentSection) {
           this.push({ sectionNumber: sectionCount, content: currentSection });
         }
@@ -338,7 +297,6 @@ interface EmbeddedFile {
       }
     });
     
-    // Transform stream to process individual sections into EmbeddedFile objects
     const fileProcessor = new Transform({
       objectMode: true,
       async transform(section: { sectionNumber: number, content: string }, encoding, callback) {
@@ -354,7 +312,6 @@ interface EmbeddedFile {
       }
     });
     
-    // Collect processed files
     const fileCollector = new Transform({
       objectMode: true,
       transform(file: EmbeddedFile, encoding, callback) {
@@ -364,7 +321,6 @@ interface EmbeddedFile {
     });
     
     try {
-      // Create streaming pipeline
       await pipeline(
         createReadStream(filePath, { encoding: 'utf-8' }),
         sectionExtractor,
@@ -392,25 +348,20 @@ interface EmbeddedFile {
   async function convertSectionToEmbeddedFile(sectionContent: string, sectionNumber: number): Promise<EmbeddedFile | null> {
     const SIGNATURE_MARKER = '_SIG/D.C.';
     
-    // Find the signature marker that separates metadata from content
     const sigIndex = sectionContent.indexOf(SIGNATURE_MARKER);
     if (sigIndex === -1) {
       console.warn(`Warning: Section ${sectionNumber} missing ${SIGNATURE_MARKER} marker, skipping...`);
       return null;
     }
     
-    // Extract metadata block (everything before the signature marker)
     const metadataBlock = sectionContent.substring(0, sigIndex);
     const metadata = extractMetadata(metadataBlock);
     
-    // Extract raw file content (everything after signature marker)
     const contentStart = sigIndex + SIGNATURE_MARKER.length;
     let fileContent = sectionContent.substring(contentStart);
     
-    // Clean up content by removing trailing section markers
     fileContent = fileContent.replace(/\*\*%%.*$/, '').replace(/\*\*$/, '');
     
-    // Process content based on file type (same logic as memory-based version)
     let processedContent = Buffer.from(fileContent, 'binary');
     
     if (metadata.TYPE?.includes('IMAGE') || metadata.DOCTYPE?.includes('IMAGE')) {
@@ -428,7 +379,6 @@ interface EmbeddedFile {
           processedContent = await sharp(processedContent).toBuffer();
         }
       } catch (e) {
-        // Fallback: manual binary signature detection
         const riffPos = processedContent.indexOf(Buffer.from([0x52, 0x49, 0x46, 0x46]));
         const jpegPos = processedContent.indexOf(Buffer.from([0xFF, 0xD8]));
         
@@ -450,12 +400,11 @@ interface EmbeddedFile {
       envGuid: metadata.ENV_GUID || '',
       content: processedContent,
       size: processedContent.length,
-      startLine: 0, // Line calculation would need full file context in streaming
-      endLine: 0    // Would need to be calculated differently for streaming
+      startLine: 0,
+      endLine: 0
     };
   }
   
-  // Export the parsing function and related types
   export { parseCompoundFile, EmbeddedFile, extractFilesToDisk };
 
   // Example usage / test function
@@ -510,5 +459,5 @@ interface EmbeddedFile {
       console.error('❌ Error:', error);
     }
   }
-  // Run if this file is executed directly
+  
   main();
