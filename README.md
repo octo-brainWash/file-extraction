@@ -241,3 +241,4 @@ In an actual production environment, this project would be built with the follow
 - The project would be built with a more robust testing suite, including unit tests, integration tests, and performance tests.
 - The project would be tested in a more robust way, making sure its generalization capabilities are verified.
 - Writing the entire code in a single file would be avoided, I also prefer using a more OOP approach, and the code would be more modular and easier to maintain. Using patterns like Strategy to split different file types into different classes might be a good approach.
+- LLM was used to generate part of the code for time efficiency, but I might have come to a better solution planning the architecture first and delimiting the problem into smaller parts and tasks.
